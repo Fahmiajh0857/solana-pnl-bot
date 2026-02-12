@@ -1,4 +1,4 @@
-﻿anyio==4.12.1
+anyio==4.12.1
 cachetools==4.2.4
 certifi==2026.1.4
 charset-normalizer==3.4.4
@@ -19,7 +19,7 @@ types-cachetools==4.2.10
 typing_extensions==4.15.0
 urllib3==2.6.3
 websockets==11.0.3
+python-telegram-bot==20.7
 solana
 solders
 requests
-
