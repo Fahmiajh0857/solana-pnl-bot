@@ -47,6 +47,13 @@ def init_db():
         last_monthly_reset TEXT
     )
     """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS daily_history (
+        date TEXT PRIMARY KEY,
+        pnl REAL
+    )
+    """)
+
 
     cursor.execute("SELECT COUNT(*) FROM state")
     if cursor.fetchone()[0] == 0:
@@ -88,6 +95,22 @@ def save_state(data):
     """, data)
     conn.commit()
     conn.close()
+
+def get_last_n_days(n):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT pnl FROM daily_history
+    ORDER BY date DESC
+    LIMIT ?
+    """, (n,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return sum(r[0] for r in rows)
+
 
 # ================= CACHE =================
 def get_sol_price():
@@ -151,9 +174,35 @@ def check_resets(sol, usdc):
     last_monthly = datetime.fromisoformat(lmonthly)
 
     if now.time() >= RESET_TIME and last_daily.date() < now.date():
-        dsol, dusdc = sol, usdc
-        dval = current_value
-        last_daily = now
+
+    # Hitung closing daily PNL
+    daily_pnl = current_value - base_value_day
+
+    today_str = now.date().isoformat()
+
+    cursor.execute("""
+    INSERT OR REPLACE INTO daily_history (date, pnl)
+    VALUES (?, ?)
+    """, (today_str, daily_pnl))
+
+    # Update base untuk hari berikutnya
+    cursor.execute("""
+    UPDATE state
+    SET base_sol_day=?,
+        base_usdc_day=?,
+        base_value_day=?,
+        last_daily_reset=?
+    WHERE id=1
+    """, (sol, usdc, current_value, now.isoformat()))
+
+    conn.commit()
+
+    # Update variable lokal juga
+    base_sol_day = sol
+    base_usdc_day = usdc
+    base_value_day = current_value
+    last_daily = now
+
 
     if (now - last_weekly).days >= 7 and now.time() >= RESET_TIME:
         wsol, wusdc = sol, usdc
