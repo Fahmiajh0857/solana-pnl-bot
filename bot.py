@@ -281,7 +281,6 @@ PnL: {sign}${pnl:.2f}
 
 
 async def cek30(update: Update, context: ContextTypes.DEFAULT_TYPE):
-async def cek30(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     pnl = get_last_n_days(30)
     sign = "+" if pnl >= 0 else ""
