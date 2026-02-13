@@ -158,72 +158,53 @@ def get_balances(force=False):
 
 # ================= RESET =================
 def check_resets(sol, usdc):
-    state = load_state()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
 
-    (_, dsol,dusdc,dval,
-     wsol,wusdc,wval,
-     msol,musdc,mval,
-     ldaily,lweekly,lmonthly) = state
+    cursor.execute("""
+    SELECT base_sol_day, base_usdc_day, base_value_day, last_daily_reset
+    FROM state WHERE id=1
+    """)
+
+    dsol, dusdc, dval, ldaily = cursor.fetchone()
 
     now = datetime.now()
     price = get_sol_price()
-    current_value = sol*price + usdc
+    current_value = sol * price + usdc
 
     last_daily = datetime.fromisoformat(ldaily)
-    last_weekly = datetime.fromisoformat(lweekly)
-    last_monthly = datetime.fromisoformat(lmonthly)
 
     if now.time() >= RESET_TIME and last_daily.date() < now.date():
 
-    # Hitung closing daily PNL
-    daily_pnl = current_value - base_value_day
+        # hitung closing pnl
+        daily_pnl = current_value - dval
+        today_str = now.date().isoformat()
 
-    today_str = now.date().isoformat()
+        cursor.execute("""
+        INSERT OR REPLACE INTO daily_history (date, pnl)
+        VALUES (?, ?)
+        """, (today_str, daily_pnl))
 
-    cursor.execute("""
-    INSERT OR REPLACE INTO daily_history (date, pnl)
-    VALUES (?, ?)
-    """, (today_str, daily_pnl))
+        # update base baru
+        cursor.execute("""
+        UPDATE state
+        SET base_sol_day=?,
+            base_usdc_day=?,
+            base_value_day=?,
+            last_daily_reset=?
+        WHERE id=1
+        """, (sol, usdc, current_value, now.isoformat()))
 
-    # Update base untuk hari berikutnya
-    cursor.execute("""
-    UPDATE state
-    SET base_sol_day=?,
-        base_usdc_day=?,
-        base_value_day=?,
-        last_daily_reset=?
-    WHERE id=1
-    """, (sol, usdc, current_value, now.isoformat()))
+        conn.commit()
 
-    conn.commit()
+        dsol = sol
+        dusdc = usdc
+        dval = current_value
 
-    # Update variable lokal juga
-    base_sol_day = sol
-    base_usdc_day = usdc
-    base_value_day = current_value
-    last_daily = now
+    conn.close()
 
+    return dsol, dusdc, dval
 
-    if (now - last_weekly).days >= 7 and now.time() >= RESET_TIME:
-        wsol, wusdc = sol, usdc
-        wval = current_value
-        last_weekly = now
-
-    if now.day == 1 and now.time() >= RESET_TIME and last_monthly.month != now.month:
-        msol, musdc = sol, usdc
-        mval = current_value
-        last_monthly = now
-
-    save_state((
-        dsol,dusdc,dval,
-        wsol,wusdc,wval,
-        msol,musdc,mval,
-        last_daily.isoformat(),
-        last_weekly.isoformat(),
-        last_monthly.isoformat()
-    ))
-
-    return dsol,dusdc,dval,wsol,wusdc,wval,msol,musdc,mval
 
 # ================= CALC =================
 def calc_pnl(sol, usdc, base_sol, base_usdc):
@@ -241,40 +222,29 @@ async def cek(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sol, usdc = get_balances()
     price = get_sol_price()
 
-    # update & ambil base data
-    dsol,dusdc,dval,wsol,wusdc,wval,msol,musdc,mval = check_resets(sol, usdc)
+    dsol, dusdc, dval = check_resets(sol, usdc)
 
-    # current value
     sol_value = sol * price
     total_value = sol_value + usdc
 
-    # DAILY
-    pnl_d = calc_pnl(sol, usdc, dsol, dusdc)
+    # DAILY realtime
+    pnl_d = total_value - dval
     percent_d = calc_percent(pnl_d, dval)
 
-    # WEEKLY
-    pnl_w = calc_pnl(sol, usdc, wsol, wusdc)
-    percent_w = calc_percent(pnl_w, wval)
+    # 7D rolling
+    pnl_w = get_last_n_days(7)
+    percent_w = calc_percent(pnl_w, dval)
 
-    # MONTHLY
-    pnl_m = calc_pnl(sol, usdc, msol, musdc)
-    percent_m = calc_percent(pnl_m, mval)
+    # 30D rolling
+    pnl_m = get_last_n_days(30)
+    percent_m = calc_percent(pnl_m, dval)
 
-    # icon function
     def pnl_icon(x):
         if x > 0:
             return "🟢"
         elif x < 0:
             return "🔴"
         return "⚪"
-
-    # status
-    if total_value > dval:
-        status = "📈 Capital Growing"
-    elif total_value < dval:
-        status = "📉 Capital Drawdown"
-    else:
-        status = "⚡ Capital Stable"
 
     message = f"""
 <b>DASHBOARD</b>
@@ -292,53 +262,38 @@ Daily   {pnl_icon(pnl_d)} <code>${pnl_d:.2f}</code> ({percent_d:.2f}%)
 7D       {pnl_icon(pnl_w)} <code>${pnl_w:.2f}</code> ({percent_w:.2f}%)
 30D     {pnl_icon(pnl_m)} <code>${pnl_m:.2f}</code> ({percent_m:.2f}%)
 """
-    await update.message.reply_text(
-    message,
-    parse_mode="HTML"
-)
+
+    await update.message.reply_text(message, parse_mode="HTML")
 
 
 async def cek7(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sol, usdc = get_balances()
-    _,_,_,wsol,wusdc,wval,_,_,_ = check_resets(sol, usdc)
 
-    price = get_sol_price()
-
-    pnl = calc_pnl(sol, usdc, wsol, wusdc)
-    percent = calc_percent(pnl, wval)
-
+    pnl = get_last_n_days(7)
     sign = "+" if pnl >= 0 else ""
 
     await update.message.reply_text(
         f"""
-📅 WEEKLY PERFORMANCE
-━━━━━━━━━━━━━━━━━━
-Base: ${wval:.2f}
+📅 LAST 7 DAYS
+━━━━━━━━━━━━━━
 PnL: {sign}${pnl:.2f}
-Return: {sign}{percent:.2f}%
 """
     )
+
 
 async def cek30(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sol, usdc = get_balances()
-    _,_,_,_,_,_,msol,musdc,mval = check_resets(sol, usdc)
+async def cek30(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    price = get_sol_price()
-
-    pnl = calc_pnl(sol, usdc, msol, musdc)
-    percent = calc_percent(pnl, mval)
-
+    pnl = get_last_n_days(30)
     sign = "+" if pnl >= 0 else ""
 
     await update.message.reply_text(
         f"""
-📆 MONTHLY PERFORMANCE
-━━━━━━━━━━━━━━━━━━
-Base: ${mval:.2f}
+📆 LAST 30 DAYS
+━━━━━━━━━━━━━━
 PnL: {sign}${pnl:.2f}
-Return: {sign}{percent:.2f}%
 """
     )
+
 
 
 # ================= MAIN =================
