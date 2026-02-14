@@ -119,20 +119,24 @@ def get_last_n_days(n):
 # ================= CACHE =================
 def get_sol_price():
     now = datetime.now(WIB)
-    if PRICE_CACHE["timestamp"] and (now - PRICE_CACHE["timestamp"]).seconds < 60:
+
+    if PRICE_CACHE["timestamp"] and \
+       (now - PRICE_CACHE["timestamp"]).seconds < 60:
         return PRICE_CACHE["value"]
 
     r = requests.get(
         "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd"
     )
+
     try:
-    price = r.json()["solana"]["usd"]
-except:
-    return PRICE_CACHE["value"] or 0
-    
+        price = r.json()["solana"]["usd"]
+    except:
+        return PRICE_CACHE["value"] or 0
+
     PRICE_CACHE["value"] = price
     PRICE_CACHE["timestamp"] = now
     return price
+
 
 def get_balances(force=False):
     now = datetime.now(WIB)
