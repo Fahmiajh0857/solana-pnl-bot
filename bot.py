@@ -22,7 +22,8 @@ USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 DB_FILE = "pnl_data.db"
 WIB = timezone(timedelta(hours=7))
 
-RESET_TIME = time(3, 0)
+RESET_TIME = time(0, 0)
+
 
 PRICE_CACHE = {"value": None, "timestamp": None}
 BALANCE_CACHE = {"sol": None, "usdc": None, "timestamp": None}
@@ -300,6 +301,7 @@ PnL: {sign}${pnl:.2f}
 async def auto_reset(context: ContextTypes.DEFAULT_TYPE):
     sol, usdc = get_balances()
     check_resets(sol, usdc)
+
     
 
 
@@ -313,10 +315,16 @@ def main():
     app.add_handler(CommandHandler("cek7", cek7))
     app.add_handler(CommandHandler("cek30", cek30))
 
-    # auto check reset tiap 60 detik
-    app.job_queue.run_repeating(auto_reset, interval=60, first=5)
+    # AUTO RESET tiap 60 detik
+    app.job_queue.run_repeating(
+        auto_reset,
+        interval=60,
+        first=5
+    )
 
+    print("✅ PNL Bot running...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
