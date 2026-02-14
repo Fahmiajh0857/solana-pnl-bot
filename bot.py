@@ -297,25 +297,24 @@ async def cek30(update: Update, context: ContextTypes.DEFAULT_TYPE):
 PnL: {sign}${pnl:.2f}
 """
     )
-
+async def auto_reset(context: ContextTypes.DEFAULT_TYPE):
+    sol, usdc = get_balances()
+    check_resets(sol, usdc)
+    
 
 
 # ================= MAIN =================
 def main():
-    async def auto_reset(app):
-    while True:
-        sol, usdc = get_balances()
-        check_resets(sol, usdc)
-        await asyncio.sleep(60)
-        
     init_db()
+
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("cek", cek))
     app.add_handler(CommandHandler("cek7", cek7))
     app.add_handler(CommandHandler("cek30", cek30))
-    app.create_task(auto_reset(app))
-    
+
+    # auto check reset tiap 60 detik
+    app.job_queue.run_repeating(auto_reset, interval=60, first=5)
 
     app.run_polling()
 
