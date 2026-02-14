@@ -21,7 +21,7 @@ USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 DB_FILE = "pnl_data.db"
 WIB = timezone(timedelta(hours=7))
 
-RESET_TIME = time(0, 0)
+RESET_TIME = time(3, 0)
 
 
 PRICE_CACHE = {"value": None, "timestamp": None}
