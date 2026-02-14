@@ -4,7 +4,6 @@ from datetime import datetime, time, timedelta, timezone
 import asyncio
 import logging
 import requests
-from datetime import datetime, time
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from solana.rpc.api import Client
@@ -126,7 +125,11 @@ def get_sol_price():
     r = requests.get(
         "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd"
     )
+    try:
     price = r.json()["solana"]["usd"]
+except:
+    return PRICE_CACHE["value"] or 0
+    
     PRICE_CACHE["value"] = price
     PRICE_CACHE["timestamp"] = now
     return price
@@ -238,11 +241,12 @@ async def cek(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 7D rolling
     pnl_w = get_last_n_days(7)
-    percent_w = calc_percent(pnl_w, dval)
+    percent_w = calc_percent(pnl_w, total_value - pnl_w)
 
     # 30D rolling
     pnl_m = get_last_n_days(30)
-    percent_m = calc_percent(pnl_m, dval)
+    percent_m = calc_percent(pnl_m, total_value - pnl_m)
+
 
     def pnl_icon(x):
         if x > 0:
