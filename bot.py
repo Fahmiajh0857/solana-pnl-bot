@@ -1,5 +1,7 @@
 import os
 import sqlite3
+from datetime import datetime, time, timedelta, timezone
+import asyncio
 import logging
 import requests
 from datetime import datetime, time
@@ -18,6 +20,8 @@ WALLET_ADDRESS = os.getenv("WALLET_ADDRESS")
 
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 DB_FILE = "pnl_data.db"
+WIB = timezone(timedelta(hours=7))
+
 RESET_TIME = time(3, 0)
 
 PRICE_CACHE = {"value": None, "timestamp": None}
@@ -60,7 +64,7 @@ def init_db():
         sol, usdc = get_balances(force=True)
         price = get_sol_price()
         value = sol * price + usdc
-        now = datetime.now().isoformat()
+        now = datetime.now(WIB).isoformat()
 
         cursor.execute("""
         INSERT INTO state VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -114,7 +118,7 @@ def get_last_n_days(n):
 
 # ================= CACHE =================
 def get_sol_price():
-    now = datetime.now()
+    now = datetime.now(WIB)
     if PRICE_CACHE["timestamp"] and (now - PRICE_CACHE["timestamp"]).seconds < 60:
         return PRICE_CACHE["value"]
 
@@ -127,7 +131,7 @@ def get_sol_price():
     return price
 
 def get_balances(force=False):
-    now = datetime.now()
+    now = datetime.now(WIB)
     if not force and BALANCE_CACHE["timestamp"] and \
        (now - BALANCE_CACHE["timestamp"]).seconds < 30:
         return BALANCE_CACHE["sol"], BALANCE_CACHE["usdc"]
@@ -168,7 +172,7 @@ def check_resets(sol, usdc):
 
     dsol, dusdc, dval, ldaily = cursor.fetchone()
 
-    now = datetime.now()
+    now = datetime.now(WIB)
     price = get_sol_price()
     current_value = sol * price + usdc
 
@@ -250,6 +254,7 @@ async def cek(update: Update, context: ContextTypes.DEFAULT_TYPE):
 <b>DASHBOARD</b>
 ━━━━━━━━━━━━
 ($SOL): <code>${price:.2f}</code>
+Daily TVL: <code>${dval:.2f}</code>
 
 💎 Portfolio
 SOL:  {sol:.4f} ≈ (<code>${sol_value:.2f}</code>)
@@ -297,12 +302,20 @@ PnL: {sign}${pnl:.2f}
 
 # ================= MAIN =================
 def main():
+    async def auto_reset(app):
+    while True:
+        sol, usdc = get_balances()
+        check_resets(sol, usdc)
+        await asyncio.sleep(60)
+        
     init_db()
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("cek", cek))
     app.add_handler(CommandHandler("cek7", cek7))
     app.add_handler(CommandHandler("cek30", cek30))
+    app.create_task(auto_reset(app))
+    
 
     app.run_polling()
 
